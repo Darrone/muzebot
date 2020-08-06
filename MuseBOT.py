@@ -2,14 +2,17 @@ import asyncio
 
 import discord
 import youtube_dl
+import urllib.parse, urllib.request, re
 
 from discord.ext import commands
+from youtubesearchpython import SearchVideos
 
 TOKEN = open('token.txt', 'r').read()
 
+search_list = []
+
 # Suppress noise about console usage from errors
 youtube_dl.utils.bug_reports_message = lambda: ''
-
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -31,7 +34,6 @@ ffmpeg_options = {
 }
 
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
-
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -78,7 +80,8 @@ class Music(commands.Cog):
     @commands.command()
     async def play(self, ctx, *, url):
         """Streams from a url"""
-
+        print(url)
+        print(type(url))
         async with ctx.typing():
             player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
             ctx.voice_client.play(player, after=lambda e: print('Player error: %s' % e) if e else None)
@@ -139,6 +142,37 @@ class Music(commands.Cog):
             await ctx.send('Resuming Player!')
         else:
             await ctx.send('Audio is already playing!')
+# NEW STUFF
+    # Search Command
+    # TODO: Incorporate this into Play Command s.t. non url arg calls this
+    @commands.command() 
+    async def search(self, ctx, *, search):
+        global search_list
+        query = SearchVideos(search, offset = 1, mode = "dict", max_results = 5)
+        query_string = "```Choose a video:"
+        for i in query.result()['search_result']:
+           query_string += "\n[" 
+           query_string += str(i['index'] + 1)
+           query_string += "] - " 
+           query_string += i['title']
+           search_list.append(i['link'])
+           print(i['link'])
+           print(type(i['link']))
+
+        await ctx.send(query_string + "```")
+
+    @commands.command()
+    async def choose(self, ctx, choice):
+        global search_list
+        async with ctx.typing():
+            player = await YTDLSource.from_url(search_list[int(choice)], loop=self.bot.loop, stream=True)
+            ctx.voice_client.play(player, after=lambda e: print('Player error: %s' % e) if e else None)
+
+        await ctx.send('Now playing: {}'.format(player.title))
+
+    @commands.command()
+    async def test(self, ctx, *, search):
+        print(search_list)        
 
     @play.before_invoke
     async def ensure_voice(self, ctx):
