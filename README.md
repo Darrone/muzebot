@@ -5,11 +5,11 @@ lol
 Need "token.txt" to read the BOT's token. Do not add it to GitHub because that's the BOT's "Password"
 
 ### TO DO:
-- [ ] Add Queue of songs
+- [x] Add Queue of songs
 - [ ] Remove from queue
-- [ ] Search youtube (Webcrawling)
-- [ ] Play from URL directly (Done)
-- [ ] Play through webcrawling search
+- [x] Search youtube (Webcrawling)
+- [x] Play from URL directly
+- [x] Play through webcrawling search
 - [ ] Spotify Maybe????
 
 - More ideas to come
