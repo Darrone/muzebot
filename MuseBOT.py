@@ -77,65 +77,54 @@ class Music(commands.Cog):
 
         await channel.connect()
 
-    # Play Command
+    # Play Command (choice() has been implemented here)
     @commands.command()
     async def play(self, ctx, *, url):
         """Streams from a url"""
+        vc = ctx.voice_client
 
-        print(url)
-        print(type(url))
-        #global search_list
-        #if length of url == 1 && search_list is not empty:
-        #   url = search_list[int(url)]
-        async with ctx.typing():
-            player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
-            ctx.voice_client.play(player, after=lambda e: print('Player error: %s' % e) if e else None)
+        # Probably needs better error handling
+        if ((len(url) == 1) and (len(search_list) != 0)):
+            if (int(url) < 6):
+                url = search_list[int(url) - 1]
+                search_list.clear()
+            else:
+                await ctx.send('Invalid selection.')
+                return
+        # Debug message keeps returning False even when bot is playing, which results in queue not functioning properly
+        print(vc.is_playing())
 
-        await ctx.send('Now playing: {}'.format(player.title))
+        song_queue.append(url)
+        if not vc.is_playing():
+            async with ctx.typing():
+                player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
+                vc.play(player, after=lambda e: print('Player error: %s' % e) if e else play_next(ctx))
+            await ctx.send('Now playing: {}'.format(player.title))
+        else:
+            await ctx.send('Song Queued')
+
+        def play_next(ctx):
+            global song_queue
+
+            # Check if queue is not empty
+            if len(song_queue) >= 1:
+                del song_queue[0]
+                # After deleting see if there is nothing in queue
+                if len(song_queue) <= 0:
+                    return
+
+                player = asyncio.run_coroutine_threadsafe(YTDLSource.from_url(song_queue[0], loop=self.bot.loop, stream=True), self.bot.loop)
+                try:
+                    vc.play(player.result(), after=lambda e: play_next(ctx))
+                    asyncio.run_coroutine_threadsafe(ctx.send("No more songs in queue."), self.bot.loop)
+                except:
+                    print("Something Bad Happened!")
+                    pass
 
     @play.error
     async def play_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
             await ctx.send('Missing Youtube URL')
-
-    #IMPLEMENTATION 1
-    #def play_next(ctx, source):
-    #    vc = get(self.bot.voice_clients, guild=ctx.guild)
-    #    if len(self.song_list) >= 1:
-    #        del self.song_list[0]
-    #        vc.play(discord.FFmpegPCMAudio(source=source, after=lambda e: play_next(ctx))
-    #    else:
-    #        asyncio.sleep(90) #wait 1 minute and 30 seconds
-    #        if not vc.is_playing():
-    #            asyncio.run_coroutine_threadsafe(vc.disconnect(ctx), self.bot.loop)
-    #            asyncio.run_coroutine_threadsafe(ctx.send("No more songs in queue."))
-
-
-    #IMPLEMENTATION 2 (APPARENTLY WORKS BETTER)
-    # async def audio_player_task():
-    #     while True: 
-    #         play_next_song.clear()
-    #         current = await songs.get()
-    #         current.start()
-    #         await play_next_song.wait()
-    
-    # def toggle_next():
-    #     bot.loop.call_soon_threadsafe(play_next_song.set)
-    
-    
-    # @client.command(pass_context=True)
-    # async def play(ctx, url):
-
-    ## MOST LIKELY REDUNDANT SECTION
-    #     if not client.is_voice_connected(ctx.message.server):
-    #         voice = await client.join_voice_channel(ctx.message.author.voice_channel)
-    #     else:
-    #         voice = client.voice_client_in(ctx.message.server)
-    ## -- END OF SECTION --
-
-    #     player = await voice.create_ytdl_player(url, after=toggle_next)
-    #     await songs.put(player)
-
 
 
     #Volume Change
@@ -187,7 +176,7 @@ class Music(commands.Cog):
             await ctx.send('Resuming Player!')
         else:
             await ctx.send('Audio is already playing!')
-# NEW STUFF
+    # --- NEW --- 
     # Search Command
     # TODO: Incorporate this into Play Command s.t. non url arg calls this
     @commands.command() 
@@ -202,48 +191,8 @@ class Music(commands.Cog):
            query_string += "] - " 
            query_string += i['title']
            search_list.append(i['link'])
-        #    print(i['link'])
-        #    print(type(i['link']))
 
         await ctx.send(query_string + "```")
-
-
-# Next goal combine choose and search to the play command just like FredBoat
-
-    @commands.command()
-    async def choose(self, ctx, video : int):
-        vc = ctx.voice_client
-        choice = video - 1
-        # print(choice)
-        # print(search_list[choice])
-
-        song_queue.append(search_list[choice])
-        if not vc.is_playing():
-            async with ctx.typing():
-                player = await YTDLSource.from_url(search_list[choice], loop=self.bot.loop, stream=True)
-                vc.play(player, after=lambda e: print('Player error: %s' % e) if e else play_next(ctx))
-            await ctx.send('Now playing: {}'.format(player.title))
-        else:
-            await ctx.send('Song Queued')
-
-        def play_next(ctx):
-            global song_queue
-
-            # Check if queue is not empty
-            if len(song_queue) >= 1:
-                del song_queue[0]
-                # After deleting see if there is nothing in queue
-                if len(song_queue) <= 0:
-                    return
-
-                player = asyncio.run_coroutine_threadsafe(YTDLSource.from_url(song_queue[0], loop=self.bot.loop, stream=True), self.bot.loop)
-                try:
-                    vc.play(player.result(), after=lambda e: play_next(ctx))
-                    asyncio.run_coroutine_threadsafe(ctx.send("No more songs in queue."), self.bot.loop)
-                except:
-                    print("Something Bad Happened!")
-                    pass
-
 
     @commands.command()
     async def test(self, ctx, *, url):
@@ -264,9 +213,6 @@ class Music(commands.Cog):
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
                    description='Hi I am MuseBOT, Use me as you please UwU')
-
-## FROM IMPLEMENTATION 2
-# bot.loop.create_task(audio_player_task())
 
 # @bot.event
 # async def on_command_error(ctx, error):
