@@ -9,6 +9,7 @@ from youtubesearchpython import SearchVideos
 TOKEN = open('token.txt', 'r').read()
 
 search_list = []
+song_queue = []
 
 #song_list = asyncio.Queue()
 #play_next_song = asyncio.Event()
@@ -63,20 +64,18 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+
     # Join Command
     @commands.command()
-    async def join(self, ctx, *, channel: discord.VoiceChannel):
+    async def join(self, ctx):
         """Joins a voice channel"""
+
+        channel = ctx.author.voice.channel
 
         if ctx.voice_client is not None:
             return await ctx.voice_client.move_to(channel)
 
         await channel.connect()
-
-    @join.error
-    async def join_error(self, ctx, error):
-        if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send('Need to specify channel to join')
 
     # Play Command
     @commands.command()
@@ -137,6 +136,8 @@ class Music(commands.Cog):
     #     player = await voice.create_ytdl_player(url, after=toggle_next)
     #     await songs.put(player)
 
+
+
     #Volume Change
     @commands.command()
     async def volume(self, ctx, volume: int):
@@ -192,6 +193,7 @@ class Music(commands.Cog):
     @commands.command() 
     async def search(self, ctx, *, search):
         global search_list
+        search_list.clear()
         query = SearchVideos(search, offset = 1, mode = "dict", max_results = 5)
         query_string = "```Choose a video:"
         for i in query.result()['search_result']:
@@ -200,21 +202,48 @@ class Music(commands.Cog):
            query_string += "] - " 
            query_string += i['title']
            search_list.append(i['link'])
-           print(i['link'])
-           print(type(i['link']))
+        #    print(i['link'])
+        #    print(type(i['link']))
 
         await ctx.send(query_string + "```")
 
-    @commands.command()
-    async def choose(self, ctx, *, choice):
-        #global search_list
-        print(int(choice))
-        print(search_list[int(choice)])
-        async with ctx.typing():
-            player = await YTDLSource.from_url(search_list[int(choice)], loop=self.bot.loop, stream=True)
-            ctx.voice_client.play(player, after=lambda e: print('Player error: %s' % e) if e else None)
 
-        await ctx.send('Now playing: {}'.format(player.title))
+# Next goal combine choose and search to the play command just like FredBoat
+
+    @commands.command()
+    async def choose(self, ctx, video : int):
+        vc = ctx.voice_client
+        choice = video - 1
+        # print(choice)
+        # print(search_list[choice])
+
+        song_queue.append(search_list[choice])
+        if not vc.is_playing():
+            async with ctx.typing():
+                player = await YTDLSource.from_url(search_list[choice], loop=self.bot.loop, stream=True)
+                vc.play(player, after=lambda e: print('Player error: %s' % e) if e else play_next(ctx))
+            await ctx.send('Now playing: {}'.format(player.title))
+        else:
+            await ctx.send('Song Queued')
+
+        def play_next(ctx):
+            global song_queue
+
+            # Check if queue is not empty
+            if len(song_queue) >= 1:
+                del song_queue[0]
+                # After deleting see if there is nothing in queue
+                if len(song_queue) <= 0:
+                    return
+
+                player = asyncio.run_coroutine_threadsafe(YTDLSource.from_url(song_queue[0], loop=self.bot.loop, stream=True), self.bot.loop)
+                try:
+                    vc.play(player.result(), after=lambda e: play_next(ctx))
+                    asyncio.run_coroutine_threadsafe(ctx.send("No more songs in queue."), self.bot.loop)
+                except:
+                    print("Something Bad Happened!")
+                    pass
+
 
     @commands.command()
     async def test(self, ctx, *, url):
@@ -234,15 +263,15 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
-                   description='Relatively simple music bot example')
+                   description='Hi I am MuseBOT, Use me as you please UwU')
 
 ## FROM IMPLEMENTATION 2
 # bot.loop.create_task(audio_player_task())
 
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        await ctx.send('Unknown Command')
+# @bot.event
+# async def on_command_error(ctx, error):
+#     if isinstance(error, commands.CommandNotFound):
+#         await ctx.send('Unknown Command')
 
 @bot.event
 async def on_ready():
