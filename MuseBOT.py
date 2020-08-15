@@ -46,12 +46,16 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
         self.title = data.get('title')
         self.url = data.get('url')
+        self.duration = self.get_duration(data)
+
+    def get_duration(self, data):
         x = int(data.get('duration')) % 60
         if x < 10:
             dur = "0" + str(x)
         else:
             dur = str(int(data.get('duration')) % 60)
-        self.duration = str(math.floor(int(data.get('duration')) / 60)) + ":" + dur
+            
+        return str(math.floor(int(data.get('duration')) / 60)) + ":" + dur
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
@@ -104,15 +108,15 @@ class Music(commands.Cog):
         """Changes the player's volume"""
 
         if ctx.voice_client is None:
-            return await ctx.send("Not connected to a voice channel.")
+            return await ctx.send("`Not connected to a voice channel.`")
 
         ctx.voice_client.source.volume = volume / 100
-        await ctx.send("Changed volume to {}%".format(volume))
+        await ctx.send("`Changed volume to {}%`".format(volume))
         
     @volume.error
     async def volume_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send('Missing volume to change to')
+            await ctx.send('`Missing volume to change to`')
 
     @commands.command()
     async def stop(self, ctx):
@@ -124,33 +128,51 @@ class Music(commands.Cog):
         """Pauses the player"""
 
         if ctx.voice_client is None:
-            return await ctx.send("Not connected to a voice channel.")
+            return await ctx.send("`Not connected to a voice channel.`")
 
         if ctx.voice_client.is_playing() is True:
             ctx.voice_client.pause()
-            await ctx.send('Audio Paused!')
+            await ctx.send('`Audio Paused!`')
         else:
-            await ctx.send('No audio is playing.')
+            await ctx.send('`No audio is playing.`')
 
     @commands.command()
     async def resume(self, ctx):
         """Resumes the player"""
 
         if ctx.voice_client is None:
-            return await ctx.send("Not connected to a voice channel.")
+            return await ctx.send("`Not connected to a voice channel.`")
 
         if ctx.voice_client.is_paused() is True:
             ctx.voice_client.resume()
-            await ctx.send('Resuming Player!')
+            await ctx.send('`Resuming Player!`')
         else:
-            await ctx.send('Audio is already playing!')
+            await ctx.send('`Audio is already playing!`')
+    
+    @commands.command(name="queue")
+    async def display_queue(self, ctx):
+        if not self.song_queue:
+            await ctx.send("```Queue is empty.```")
+        else:
+            query_string = "```Video Queue:"
+            i = 1
+            for x in self.song_queue:
+                query_string += "\n[" 
+                query_string += str(i)
+                query_string += "] - " 
+                query_string += x['title']
+                query_string += " ("
+                query_string += x['duration']
+                query_string += ")"
+                i += 1
+            await ctx.send(query_string + "```")
 
 
 # Search and Play in same function
 
     @commands.command()
     async def play(self, ctx, *, search):
-
+        """ !play "search" then pick number (ex: 1) """
         # Search youtube
         search_list = []
         async with ctx.typing():
@@ -164,15 +186,28 @@ class Music(commands.Cog):
                 query_string += " ("
                 query_string += i['duration']
                 query_string += ")"
-                search_list.append(i['link'])
+                info = {
+                        "link": i['link'],
+                        "title": i['title'],
+                        "duration": i['duration']
+                       }
+                search_list.append(info)
 
         sent_queue = await ctx.send(query_string + "```")
 
         # waiting for user response
         def check(m):
-            return m.author.id == ctx.author.id
+            return m.author.id == ctx.author.id and int(m.content) <= 5 and int(m.content) >= 1
 
-        response = await self.bot.wait_for('message', check=check)
+        try:
+            response = await self.bot.wait_for('message', check=check, timeout=30)
+        except asyncio.TimeoutError:
+            await ctx.send("`No song chosen!`")
+            await sent_queue.delete()
+            if response:
+                await response.delete()
+            return
+
         choice = int(response.content) - 1
         
         # Queue and playing songs
@@ -180,16 +215,13 @@ class Music(commands.Cog):
         self.song_queue.append(search_list[choice])
         if not vc.is_playing():
             async with ctx.typing():
-                display = query.result()['search_result']
-                player = await YTDLSource.from_url(search_list[choice], loop=self.bot.loop, stream=True)
+                player = await YTDLSource.from_url(search_list[choice]['link'], loop=self.bot.loop, stream=True)
                 vc.play(player, after=lambda e: print('Player error: %s' % e) if e else play_next(ctx))
-            embed = discord.Embed(title = 'Now playing: {} ({})'.format(player.title, player.duration))
-            await ctx.send(embed = embed)
+            await ctx.send('`Now playing: {} ({})`'.format(player.title, player.duration))
         else:
             #await ctx.send('Song Queued:')
             display = query.result()['search_result']
-            embed = discord.Embed(title = 'Song Queued: {} ({})'.format(display[choice]['title'], display[choice]['duration']))
-            await ctx.send(embed = embed)
+            await ctx.send('`Song Queued: {} ({})`'.format(display[choice]['title'], display[choice]['duration']))
 
         await sent_queue.delete()
         await response.delete()
@@ -201,16 +233,14 @@ class Music(commands.Cog):
                 del self.song_queue[0]
                 # After deleting see if there is nothing in queue
                 if len(self.song_queue) <= 0:
-                    embed = discord.Embed(title = "No more songs in queue.")
-                    asyncio.run_coroutine_threadsafe(ctx.send(embed=embed), self.bot.loop)
+                    asyncio.run_coroutine_threadsafe(ctx.send("`No more songs in queue.`"), self.bot.loop)
                     return
 
-                result = asyncio.run_coroutine_threadsafe(YTDLSource.from_url(self.song_queue[0], loop=self.bot.loop, stream=True), self.bot.loop)
+                result = asyncio.run_coroutine_threadsafe(YTDLSource.from_url(self.song_queue[0]['link'], loop=self.bot.loop, stream=True), self.bot.loop)
                 player = result.result()
                 try:
                     vc.play(player, after=lambda e: play_next(ctx))
-                    embed = discord.Embed(title = 'Now playing: {} ({})'.format(player.title, player.duration))
-                    asyncio.run_coroutine_threadsafe(ctx.send(embed=embed), self.bot.loop)
+                    asyncio.run_coroutine_threadsafe(ctx.send('`Now playing: {} ({})`'.format(player.title, player.duration)), self.bot.loop)
                 except:
                     print("Something Bad Happened!")
                     pass
@@ -221,8 +251,8 @@ class Music(commands.Cog):
             if ctx.author.voice:
                 await ctx.author.voice.channel.connect()
             else:
-                await ctx.send("You are not connected to a voice channel.")
-                raise commands.CommandError("Author not connected to a voice channel.")
+                await ctx.send("`You are not connected to a voice channel.`")
+                raise commands.CommandError("`Author not connected to a voice channel.`")
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
                    description='Hi I am MuseBOT, Use me as you please UwU')
