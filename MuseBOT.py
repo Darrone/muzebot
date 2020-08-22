@@ -2,6 +2,7 @@ import asyncio
 import discord
 import youtube_dl
 import math
+import random
 import urllib.parse, urllib.request, re
 
 from discord.ext import commands
@@ -9,10 +10,8 @@ from youtubesearchpython import SearchVideos
 
 TOKEN = open('token.txt', 'r').read()
 
-search_list = []
-
-#song_list = asyncio.Queue()
-#play_next_song = asyncio.Event()
+original_list = []
+shuffle_flag = False
 
 # Suppress noise about console usage from errors
 youtube_dl.utils.bug_reports_message = lambda: ''
@@ -74,6 +73,8 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.song_queue = []
+        self.original_list = []
+        self.shuffle_flag = False
 
     # Join Command
     @commands.command()
@@ -168,8 +169,22 @@ class Music(commands.Cog):
             await ctx.send(query_string + "```")
 
 
+# Changes the order of the song queue
+    @commands.command()
+    async def shuffle(self, ctx):
+        # Has been shuffled
+        if (self.shuffle_flag):
+            self.song_queue = self.original_list.copy()
+            self.shuffle_flag = False
+            await ctx.send('`Queue Un-shuffled!`')
+        # Has not been shuffled
+        else:
+            self.original_list = self.song_queue.copy()
+            random.shuffle(self.song_queue)
+            self.shuffle_flag = True
+            await ctx.send('`Queue Shuffled!`')
+        
 # Search and Play in same function
-
     @commands.command()
     async def play(self, ctx, *, search):
         """ !play "search" then pick number (ex: 1) """
@@ -212,7 +227,7 @@ class Music(commands.Cog):
         
         # Queue and playing songs
         vc = ctx.voice_client
-        self.song_queue.append(search_list[choice])
+        #self.song_queue.append(search_list[choice])
         if not vc.is_playing():
             async with ctx.typing():
                 player = await YTDLSource.from_url(search_list[choice]['link'], loop=self.bot.loop, stream=True)
@@ -220,6 +235,7 @@ class Music(commands.Cog):
             await ctx.send('`Now playing: {} ({})`'.format(player.title, player.duration))
         else:
             #await ctx.send('Song Queued:')
+            self.song_queue.append(search_list[choice])
             display = query.result()['search_result']
             await ctx.send('`Song Queued: {} ({})`'.format(display[choice]['title'], display[choice]['duration']))
 
@@ -230,7 +246,7 @@ class Music(commands.Cog):
 
             # Check if queue is not empty
             if len(self.song_queue) >= 1:
-                del self.song_queue[0]
+                #del self.song_queue[0]
                 # After deleting see if there is nothing in queue
                 if len(self.song_queue) <= 0:
                     asyncio.run_coroutine_threadsafe(ctx.send("`No more songs in queue.`"), self.bot.loop)
@@ -241,6 +257,7 @@ class Music(commands.Cog):
                 try:
                     vc.play(player, after=lambda e: play_next(ctx))
                     asyncio.run_coroutine_threadsafe(ctx.send('`Now playing: {} ({})`'.format(player.title, player.duration)), self.bot.loop)
+                    del self.song_queue[0]
                 except:
                     print("Something Bad Happened!")
                     pass
