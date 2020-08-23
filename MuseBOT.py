@@ -10,9 +10,6 @@ from youtubesearchpython import SearchVideos
 
 TOKEN = open('token.txt', 'r').read()
 
-original_list = []
-shuffle_flag = False
-
 # Suppress noise about console usage from errors
 youtube_dl.utils.bug_reports_message = lambda: ''
 
@@ -42,7 +39,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
         super().__init__(source, volume)
 
         self.data = data
-
         self.title = data.get('title')
         self.url = data.get('url')
         self.duration = self.get_duration(data)
@@ -75,6 +71,7 @@ class Music(commands.Cog):
         self.song_queue = []
         self.original_list = []
         self.shuffle_flag = False
+        self.now_playing = {}
 
     # Join Command
     @commands.command()
@@ -109,15 +106,16 @@ class Music(commands.Cog):
         """Changes the player's volume"""
 
         if ctx.voice_client is None:
-            return await ctx.send("`Not connected to a voice channel.`")
+            return await ctx.send("**Not connected to a voice channel.**")
 
         ctx.voice_client.source.volume = volume / 100
-        await ctx.send("`Changed volume to {}%`".format(volume))
+        await ctx.send("**Changed volume to {}%**".format(volume))
         
     @volume.error
     async def volume_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send('`Missing volume to change to`')
+            await ctx.send('**Missing volume to change to.**')
+
 
     @commands.command()
     async def stop(self, ctx):
@@ -129,29 +127,29 @@ class Music(commands.Cog):
         """Pauses the player"""
 
         if ctx.voice_client is None:
-            return await ctx.send("`Not connected to a voice channel.`")
-
+            return await ctx.send("**Not connected to a voice channel.**")
         if ctx.voice_client.is_playing() is True:
             ctx.voice_client.pause()
-            await ctx.send('`Audio Paused!`')
+            await ctx.send('**Audio Paused!**')
         else:
-            await ctx.send('`No audio is playing.`')
+            await ctx.send('**No audio is playing.**')
 
     @commands.command()
     async def resume(self, ctx):
         """Resumes the player"""
 
         if ctx.voice_client is None:
-            return await ctx.send("`Not connected to a voice channel.`")
-
+            return await ctx.send("**Not connected to a voice channel.**")
         if ctx.voice_client.is_paused() is True:
             ctx.voice_client.resume()
-            await ctx.send('`Resuming Player!`')
+            await ctx.send('**Resuming Player!**')
         else:
-            await ctx.send('`Audio is already playing!`')
-    
+            await ctx.send('**Audio is already playing!**')
+     
     @commands.command(name="queue")
     async def display_queue(self, ctx):
+        """Displays song queue"""
+
         if not self.song_queue:
             await ctx.send("```Queue is empty.```")
         else:
@@ -168,23 +166,35 @@ class Music(commands.Cog):
                 i += 1
             await ctx.send(query_string + "```")
 
+# Playing: Gives link of the current song
+    @commands.command(name = "playing")
+    async def display_playing(self, ctx):
+        vc = ctx.voice_client
+        if vc is None:
+            await ctx.send("**Play a song first!**")
+        elif vc.is_playing():
+            message = "**Now Playing: **" + self.now_playing['link']
+            await ctx.send(message)
+        else:
+            await ctx.send("**Nothing is playing.**")
 
-# Changes the order of the song queue
+# Shuffle: Changes the order of the song queue
     @commands.command()
     async def shuffle(self, ctx):
+        """Shuffles the song queue"""
         # Has been shuffled
         if (self.shuffle_flag):
             self.song_queue = self.original_list.copy()
             self.shuffle_flag = False
-            await ctx.send('`Queue Un-shuffled!`')
+            await ctx.send('**Queue Un-shuffled!**')
         # Has not been shuffled
         else:
             self.original_list = self.song_queue.copy()
             random.shuffle(self.song_queue)
             self.shuffle_flag = True
-            await ctx.send('`Queue Shuffled!`')
+            await ctx.send('**Queue Shuffled!**')
         
-# Search and Play in same function
+# Play: Search and Play in same function
     @commands.command()
     async def play(self, ctx, *, search):
         """ !play "search" then pick number (ex: 1) """
@@ -217,7 +227,7 @@ class Music(commands.Cog):
         try:
             response = await self.bot.wait_for('message', check=check, timeout=30)
         except asyncio.TimeoutError:
-            await ctx.send("`No song chosen!`")
+            await ctx.send("**No song chosen!**")
             await sent_queue.delete()
             if response:
                 await response.delete()
@@ -227,36 +237,44 @@ class Music(commands.Cog):
         
         # Queue and playing songs
         vc = ctx.voice_client
-        #self.song_queue.append(search_list[choice])
         if not vc.is_playing():
             async with ctx.typing():
                 player = await YTDLSource.from_url(search_list[choice]['link'], loop=self.bot.loop, stream=True)
                 vc.play(player, after=lambda e: print('Player error: %s' % e) if e else play_next(ctx))
-            await ctx.send('`Now playing: {} ({})`'.format(player.title, player.duration))
+            await ctx.send('**Now Playing:** {} ({})'.format(player.title, player.duration))
+            self.now_playing = search_list[choice].copy()
         else:
-            #await ctx.send('Song Queued:')
             self.song_queue.append(search_list[choice])
+            # To make sure that the original list has members in it so that both queues function normally.
+            self.original_list.append(search_list[choice])
+            
             display = query.result()['search_result']
-            await ctx.send('`Song Queued: {} ({})`'.format(display[choice]['title'], display[choice]['duration']))
+            await ctx.send('**Song Queued:** {} ({})'.format(display[choice]['title'], display[choice]['duration']))
 
         await sent_queue.delete()
         await response.delete()
 
         def play_next(ctx):
-
             # Check if queue is not empty
             if len(self.song_queue) >= 1:
-                #del self.song_queue[0]
-                # After deleting see if there is nothing in queue
+                # See if there is nothing in queue
                 if len(self.song_queue) <= 0:
-                    asyncio.run_coroutine_threadsafe(ctx.send("`No more songs in queue.`"), self.bot.loop)
+                    asyncio.run_coroutine_threadsafe(ctx.send("**No more songs in queue.**"), self.bot.loop)
                     return
 
                 result = asyncio.run_coroutine_threadsafe(YTDLSource.from_url(self.song_queue[0]['link'], loop=self.bot.loop, stream=True), self.bot.loop)
                 player = result.result()
                 try:
                     vc.play(player, after=lambda e: play_next(ctx))
-                    asyncio.run_coroutine_threadsafe(ctx.send('`Now playing: {} ({})`'.format(player.title, player.duration)), self.bot.loop)
+                    asyncio.run_coroutine_threadsafe(ctx.send('**Now Playing:** {} ({})'.format(player.title, player.duration)), self.bot.loop)
+                    self.now_playing = self.song_queue[0].copy()
+                    
+                    #To make sure that songs that are removed from queue are also removed from original list.
+                    for i in range(len(self.original_list)):
+                        if self.original_list[i]['link'] == self.now_playing['link']:
+                            self.original_list.pop(i)
+                            break
+                    
                     del self.song_queue[0]
                 except:
                     print("Something Bad Happened!")
@@ -268,16 +286,22 @@ class Music(commands.Cog):
             if ctx.author.voice:
                 await ctx.author.voice.channel.connect()
             else:
-                await ctx.send("`You are not connected to a voice channel.`")
+                await ctx.send("**Connect to a voice channel first.**")
                 raise commands.CommandError("`Author not connected to a voice channel.`")
+
+    @commands.command()
+    async def skip(self, ctx):
+        vc = ctx.voice_client
+        if vc is None:
+            await ctx.send("**Play a song first!**")
+        elif vc.is_playing():
+            vc.stop()
+            await ctx.send('**Skipped Track:** {}'.format(self.now_playing['title']))
+        else:
+            await ctx.send('**Nothing to skip.**')
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
                    description='Hi I am MuseBOT, Use me as you please UwU')
-
-# @bot.event
-# async def on_command_error(ctx, error):
-#     if isinstance(error, commands.CommandNotFound):
-#         await ctx.send('Unknown Command')
 
 @bot.event
 async def on_ready():
