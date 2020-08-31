@@ -5,7 +5,7 @@ lol
 Need "token.txt" to read the BOT's token. Do not add it to GitHub because that's the BOT's "Password"
 
 ### TO DO:
-- [] Play from url
+- [ ] Play from url
 - [x] Add Queue of songs
 - [x] Show Queue
 - [x] Shuffle Queue
