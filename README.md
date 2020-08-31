@@ -9,7 +9,7 @@ Need "token.txt" to read the BOT's token. Do not add it to GitHub because that's
 - [x] Show Queue
 - [x] Shuffle Queue
 - [x] Skip
-- [ ] Remove from queue
+- [x] Remove from queue
 - [x] Search youtube (Webcrawling)
 - [x] Play from URL directly
 - [x] Play through webcrawling search
