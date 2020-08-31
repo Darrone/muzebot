@@ -289,6 +289,7 @@ class Music(commands.Cog):
                 await ctx.send("**Connect to a voice channel first.**")
                 raise commands.CommandError("`Author not connected to a voice channel.`")
 
+#Skip: Stopping the voice_client is functionally equivalent to a skip
     @commands.command()
     async def skip(self, ctx):
         vc = ctx.voice_client
@@ -296,9 +297,25 @@ class Music(commands.Cog):
             await ctx.send("**Play a song first!**")
         elif vc.is_playing():
             vc.stop()
-            await ctx.send('**Skipped Track:** {}'.format(self.now_playing['title']))
+            await ctx.send("**Skipped Track:** {}".format(self.now_playing['title']))
         else:
-            await ctx.send('**Nothing to skip.**')
+            await ctx.send("**Nothing to skip.**")
+
+#Remove: Removes a track from the queue
+    @commands.command()
+    async def remove(self, ctx, *, choice):
+        vc = ctx.voice_client
+        if vc is None:
+            await ctx.send("**Play a song first!**")
+        elif ((int(choice) < 1) or (int(choice) > len(self.song_queue))):
+            await ctx.send("**Invalid choice!**")
+        else:
+            for i in range(len(self.original_list)):
+                if self.original_list[i]['link'] == self.song_queue[int(choice) - 1]['link']:
+                    self.original_list.pop(i)
+                    break
+            await ctx.send("**Removed Track: {}**".format(self.song_queue[int(choice) - 1]['title']))
+            self.song_queue.pop(int(choice) - 1)
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
                    description='Hi I am MuseBOT, Use me as you please UwU')
