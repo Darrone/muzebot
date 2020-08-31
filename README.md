@@ -7,7 +7,8 @@ Need "token.txt" to read the BOT's token. Do not add it to GitHub because that's
 ### TO DO:
 - [x] Add Queue of songs
 - [x] Show Queue
-- [ ] Shuffle Queue
+- [x] Shuffle Queue
+- [x] Skip
 - [ ] Remove from queue
 - [x] Search youtube (Webcrawling)
 - [x] Play from URL directly
