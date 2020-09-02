@@ -34,6 +34,15 @@ ffmpeg_options = {
 
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
+def get_duration(data):
+    x = int(data) % 60
+    if x < 10:
+        dur = "0" + str(x)
+    else:
+        dur = str(int(data) % 60)
+        
+    return str(math.floor(int(data) / 60)) + ":" + dur
+
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
         super().__init__(source, volume)
@@ -41,16 +50,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.data = data
         self.title = data.get('title')
         self.url = data.get('url')
-        self.duration = self.get_duration(data)
-
-    def get_duration(self, data):
-        x = int(data.get('duration')) % 60
-        if x < 10:
-            dur = "0" + str(x)
-        else:
-            dur = str(int(data.get('duration')) % 60)
-            
-        return str(math.floor(int(data.get('duration')) / 60)) + ":" + dur
+        self.duration = get_duration(data.get('duration'))
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
@@ -197,44 +197,59 @@ class Music(commands.Cog):
 # Play: Search and Play in same function
     @commands.command()
     async def play(self, ctx, *, search):
-        """ !play "search" then pick number (ex: 1) """
-        # Search youtube
-        search_list = []
-        async with ctx.typing():
-            query = SearchVideos(search, offset = 1, mode = "dict", max_results = 5)
-            query_string = "```Choose a video:"
-            for i in query.result()['search_result']:
-                query_string += "\n[" 
-                query_string += str(i['index'] + 1)
-                query_string += "] - " 
-                query_string += i['title']
-                query_string += " ("
-                query_string += i['duration']
-                query_string += ")"
-                info = {
-                        "link": i['link'],
-                        "title": i['title'],
-                        "duration": i['duration']
-                       }
-                search_list.append(info)
+        """ !play "search" then pick number (ex: 1) or !play 'url' """
 
-        sent_queue = await ctx.send(query_string + "```")
+        if "youtube.com" in search:
+            # Play from URL
+            async with ctx.typing():
+                result = ytdl.extract_info(search, download=False)
+                duration = get_duration(result['duration'])
+                search_list = [
+                                {"link": search,
+                                 "title": result['title'],
+                                 "duration": duration
+                                }]
+            choice = 0
+        else:
+            # Search youtube
+            search_list = []
+            async with ctx.typing():
+                query = SearchVideos(search, offset = 1, mode = "dict", max_results = 5)
+                query_string = "```Choose a video:"
+                for i in query.result()['search_result']:
+                    query_string += "\n[" 
+                    query_string += str(i['index'] + 1)
+                    query_string += "] - " 
+                    query_string += i['title']
+                    query_string += " ("
+                    query_string += i['duration']
+                    query_string += ")"
+                    info = {
+                            "link": i['link'],
+                            "title": i['title'],
+                            "duration": i['duration']
+                        }
+                    search_list.append(info)
 
-        # waiting for user response
-        def check(m):
-            return m.author.id == ctx.author.id and int(m.content) <= 5 and int(m.content) >= 1
+            sent_queue = await ctx.send(query_string + "```")
 
-        try:
-            response = await self.bot.wait_for('message', check=check, timeout=30)
-        except asyncio.TimeoutError:
-            await ctx.send("**No song chosen!**")
+            # waiting for user response
+            def check(m):
+                return m.author.id == ctx.author.id and int(m.content) <= 5 and int(m.content) >= 1
+
+            try:
+                response = await self.bot.wait_for('message', check=check, timeout=30)
+            except asyncio.TimeoutError:
+                await ctx.send("**No song chosen!**")
+                await sent_queue.delete()
+                if response:
+                    await response.delete()
+                return
+
+            choice = int(response.content) - 1
             await sent_queue.delete()
-            if response:
-                await response.delete()
-            return
-
-        choice = int(response.content) - 1
-        
+            await response.delete()
+            
         # Queue and playing songs
         vc = ctx.voice_client
         if not vc.is_playing():
@@ -248,11 +263,7 @@ class Music(commands.Cog):
             # To make sure that the original list has members in it so that both queues function normally.
             self.original_list.append(search_list[choice])
             
-            display = query.result()['search_result']
-            await ctx.send('**Song Queued:** {} ({})'.format(display[choice]['title'], display[choice]['duration']))
-
-        await sent_queue.delete()
-        await response.delete()
+            await ctx.send('**Song Queued:** {} ({})'.format(search_list[choice]['title'], search_list[choice]['duration']))
 
         def play_next(ctx):
             # Check if queue is not empty
@@ -317,7 +328,7 @@ class Music(commands.Cog):
             await ctx.send("**Removed Track: {}**".format(self.song_queue[int(choice) - 1]['title']))
             self.song_queue.pop(int(choice) - 1)
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
+bot = commands.Bot(command_prefix=commands.when_mentioned_or(";;"),
                    description='Hi I am MuseBOT, Use me as you please UwU')
 
 @bot.event
