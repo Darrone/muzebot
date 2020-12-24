@@ -1,8 +1,4 @@
 # MuzeBOT
-lol
-
-**As of right now**
-Need "token.txt" to read the BOT's token. Do not add it to GitHub because that's the BOT's "Password"
 
 ### TO DO:
 - [x] Play from url
