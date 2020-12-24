@@ -1,10 +1,15 @@
+# TO DO: Play songs from playlist after adding them to the queue (Go to Playlist command).
+#	 Incorporate the Playlist command into Play by finding a way to differentiate between regular videos and playlists.
+
 import asyncio
 import discord
 import youtube_dl
 import math
 import random
-import urllib.parse, urllib.request, re
-
+import urllib.parse
+import urllib.request
+from urllib.request import urlopen
+import re
 from discord.ext import commands
 from youtubesearchpython import SearchVideos
 
@@ -56,9 +61,11 @@ class YTDLSource(discord.PCMVolumeTransformer):
     async def from_url(cls, url, *, loop=None, stream=False):
         loop = loop or asyncio.get_event_loop()
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-
+        
         if 'entries' in data:
             # take first item from a playlist
+            print(data['entries'][0])
+            print(data['entries'][1])
             data = data['entries'][0]
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
@@ -85,7 +92,7 @@ class Music(commands.Cog):
 
         await channel.connect()
 
-    # # Play Command
+    # Old Play Command
     # @commands.command()
     # async def play(self, ctx, *, url):
     #     """Streams from a url"""
@@ -134,6 +141,7 @@ class Music(commands.Cog):
         else:
             await ctx.send('**No audio is playing.**')
 
+# Resume: Resumes the player. 
     @commands.command()
     async def resume(self, ctx):
         """Resumes the player"""
@@ -145,7 +153,8 @@ class Music(commands.Cog):
             await ctx.send('**Resuming Player!**')
         else:
             await ctx.send('**Audio is already playing!**')
-     
+
+# Queue: Shows a list of songs in the queue.
     @commands.command(name="queue")
     async def display_queue(self, ctx):
         """Displays song queue"""
@@ -203,6 +212,7 @@ class Music(commands.Cog):
             # Play from URL
             async with ctx.typing():
                 result = ytdl.extract_info(search, download=False)
+                
                 duration = get_duration(result['duration'])
                 search_list = [
                                 {"link": search,
@@ -328,7 +338,50 @@ class Music(commands.Cog):
             await ctx.send("**Removed Track: {}**".format(self.song_queue[int(choice) - 1]['title']))
             self.song_queue.pop(int(choice) - 1)
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or(";;"),
+#Test: Temp function used for testing
+    @commands.command()
+    async def test(self, ctx):
+        print(self.song_queue)
+
+#Playlist: Test for getting playlist links
+
+    @commands.command()
+    async def playlist(self, ctx, *, url):
+        page_elements = urlopen(url).readlines()
+        playlist_entries = []
+    
+	# I know this can be a lot more efficient, but we'll figure this out later
+        for i in page_elements:
+            line = str(i, 'utf-8')
+            if 'watch?v=' in line: 
+                temp = [x[:19] for x in line.split("/") if x.find('watch?v=') != -1]
+                [playlist_entries.append("https://www.youtube.com/" + y) for y in temp if ("https://www.youtube.com/" + y) not in playlist_entries]
+                
+                for i in playlist_entries:
+                    print(i)
+                    playlist_song = ytdl.extract_info(i, download=False)
+                    duration = get_duration(playlist_song['duration'])
+                    self.song_queue.append(
+                                {"link": i,
+                                 "title": playlist_song['title'],
+                                 "duration": duration
+                                })
+
+	# Everything here is a temporary solution to playing videos from the playlist without calling the Play command.
+	# This should be removed after we figure out how to incorporate this into the Play command. 
+                if ctx.voice_client is None:
+                    if ctx.author.voice:
+                        await ctx.author.voice.channel.connect()
+                
+                vc = ctx.voice_client
+                if not vc.is_playing():
+                    async with ctx.typing():
+                        player = await YTDLSource.from_url(self.song_queue[0]['link'], loop=self.bot.loop, stream=True)
+                        vc.play(player, after=lambda e: print('Player error: %s' % e) if e else play_next(ctx))
+                    await ctx.send('**Now Playing:** {} ({})'.format(player.title, player.duration))
+                    self.now_playing = self.song_queue[0].copy()
+                      
+bot = commands.Bot(command_prefix=commands.when_mentioned_or("!"),
                    description='Hi I am MuseBOT, Use me as you please UwU')
 
 @bot.event
